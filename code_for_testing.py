@@ -38,9 +38,14 @@ avg_fitnesses = []
 mutation_prob_wb = []
 mutation_prob_layer = []
 
+list_bf = []
+list_af = []
+list_mpwb = []
+list_mpl = []
+
 FPS = 60
 
-max_time = FPS * 20
+max_time = FPS * 10
 tick = 0
 time = 0
 
@@ -228,25 +233,36 @@ class GeneticAlgorithm:
         self.goal_func = goal_func
         self.alive_individuals = population_size
         self.population = [NeuralNetwork(self.nn_structure, self.activation_func, True) for _ in range(population_size)]
-        self.epoch = 1
+        self.epoch = 0
         self.epoch_time = 0
         self.local_max_counter = 0
+        self.devider = 1
         self.max_fitness = 0
 
     def new_generation(self):
         self.population.sort(key=lambda x: x.fitness, reverse=True)
         new_population = copy.deepcopy(self.population)
         self.alive_individuals = self.population_size
-
-        print(new_population[0])
-        if self.max_fitness == new_population[0].fitness:
+        #
+        #
+        #
+        #
+        #
+        #print(new_population[0])
+        #
+        #
+        #
+        #
+        #
+        #
+        if self.max_fitness == new_population[0].fitness and self.max_fitness < 4000:
             self.local_max_counter += 1
-        else:
+        elif new_population[0].fitness > self.max_fitness:
             self.max_fitness = new_population[0].fitness
             self.local_max_counter = 0
 
         if self.local_max_counter >= 10:
-            self.epoch = 1
+            self.devider = 1
 
         best_fitnesses.append(new_population[0].fitness)
         tmp = 0
@@ -263,8 +279,8 @@ class GeneticAlgorithm:
                 new_population[i + 1].fitness = 0
                 self.mutation_layer(new_population[i], self.mutation_prob_layer_func(self.epoch_time))
                 self.mutation_layer(new_population[i + 1], self.mutation_prob_layer_func(self.epoch_time))
-                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.epoch))
-                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.epoch))
+                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.devider))
+                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.devider))
             mutation_prob_wb.append(self.mutation_prob_wb_func(self.epoch))
             mutation_prob_layer.append(self.mutation_prob_layer_func(self.epoch_time))
             self.population = copy.deepcopy(new_population)
@@ -276,12 +292,13 @@ class GeneticAlgorithm:
                 new_population[i + 1].fitness = 0
                 self.mutation_layer(new_population[i], self.mutation_prob_layer_func(self.epoch_time))
                 self.mutation_layer(new_population[i + 1], self.mutation_prob_layer_func(self.epoch_time))
-                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.epoch))
-                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.epoch))
+                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.devider))
+                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.devider))
             mutation_prob_wb.append(self.mutation_prob_wb_func(self.epoch))
             mutation_prob_layer.append(self.mutation_prob_layer_func(self.epoch_time))
             self.population = copy.deepcopy(new_population)
         self.epoch += 1
+        self.devider += 1
         self.epoch_time = 0
 
     def calc_fitness(self, individual, tmp_car):
@@ -384,7 +401,7 @@ class GeneticAlgorithm:
 
 
 def wb_func(epoch):
-    return 1/epoch
+    return 1/max(1, epoch)
 
 
 def layer_func(epoch_time):
@@ -402,10 +419,10 @@ clock = pygame.time.Clock()
 
 base_font = pygame.font.Font(None, 32)
 
-population_size = 50
-elitism_size = int(population_size/10)
-selection_size = int(population_size/20)
-nn_structure = [5, 1, 1, 1, 1, 5]
+population_size = 20
+elitism_size = max(2, int(population_size/10))
+selection_size = max(2, int(population_size/20))
+nn_structure = [5, 1, 1, 5]
 
 gen_alg = GeneticAlgorithm(population_size,
                            elitism_size,
@@ -418,8 +435,44 @@ gen_alg = GeneticAlgorithm(population_size,
                            fitness_func)
 
 cars = [Car() for _ in range(population_size)]
-
+run_counter = 0
+print("Nova populacija: {0}".format(run_counter))
+print("Generacija {0} epoha {1}".format(run_counter, gen_alg.epoch))
 while True:
+    if gen_alg.epoch == 50:
+        list_bf.append(best_fitnesses)
+        list_af.append(avg_fitnesses)
+        list_mpwb.append(mutation_prob_wb)
+        list_mpl.append(mutation_prob_layer)
+        best_fitnesses = []
+        avg_fitnesses = []
+        mutation_prob_layer = []
+        mutation_prob_wb = []
+        gen_alg = GeneticAlgorithm(population_size,
+                                   elitism_size,
+                                   True,
+                                   selection_size,
+                                   wb_func,
+                                   layer_func,
+                                   nn_structure,
+                                   Activation_ReLU(),
+                                   fitness_func)
+        cars = [Car() for _ in range(population_size)]
+        run_counter += 1
+        print("Nova populacija: {0}".format(run_counter))
+        if run_counter == 10:
+            pygame.quit()
+            plt.figure()
+            plt.xlabel('Epoch')
+            plt.ylabel('Fitness')
+            for run in range(run_counter):
+                tmp_label = "Besst Fitness {0}".format(run)
+                plt.plot([i for i in range(len(list_bf[run]))], list_bf[run], label=tmp_label)
+                #plt.plot([i for i in range(len(list_af[run]))], list_af[run], label='Average Fitness')
+            plt.legend()
+            plt.show()
+            sys.exit(0)
+
     tick += 1
     time += 1
     gen_alg.epoch_time += 1
@@ -493,6 +546,7 @@ while True:
         for i in range(len(cars)):
             cars[i] = Car()
         cars[0].sprite = GREEN_CAR
+        print("Generacija {0} epoha {1}".format(run_counter, gen_alg.epoch))
 
     text = str(FPS)
     text_surface = base_font.render(text, True, (0, 0, 0))
