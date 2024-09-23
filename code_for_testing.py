@@ -236,7 +236,7 @@ class GeneticAlgorithm:
         self.epoch = 0
         self.epoch_time = 0
         self.local_max_counter = 0
-        self.devider = 1
+        self.divider = 1
         self.max_fitness = 0
 
     def new_generation(self):
@@ -262,7 +262,7 @@ class GeneticAlgorithm:
             self.local_max_counter = 0
 
         if self.local_max_counter >= 10:
-            self.devider = 1
+            self.divider = 1
 
         best_fitnesses.append(new_population[0].fitness)
         tmp = 0
@@ -279,8 +279,8 @@ class GeneticAlgorithm:
                 new_population[i + 1].fitness = 0
                 self.mutation_layer(new_population[i], self.mutation_prob_layer_func(self.epoch_time))
                 self.mutation_layer(new_population[i + 1], self.mutation_prob_layer_func(self.epoch_time))
-                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.devider))
-                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.devider))
+                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.divider))
+                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.divider))
             mutation_prob_wb.append(self.mutation_prob_wb_func(self.epoch))
             mutation_prob_layer.append(self.mutation_prob_layer_func(self.epoch_time))
             self.population = copy.deepcopy(new_population)
@@ -292,13 +292,13 @@ class GeneticAlgorithm:
                 new_population[i + 1].fitness = 0
                 self.mutation_layer(new_population[i], self.mutation_prob_layer_func(self.epoch_time))
                 self.mutation_layer(new_population[i + 1], self.mutation_prob_layer_func(self.epoch_time))
-                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.devider))
-                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.devider))
+                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.divider))
+                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.divider))
             mutation_prob_wb.append(self.mutation_prob_wb_func(self.epoch))
             mutation_prob_layer.append(self.mutation_prob_layer_func(self.epoch_time))
             self.population = copy.deepcopy(new_population)
         self.epoch += 1
-        self.devider += 1
+        self.divider += 1
         self.epoch_time = 0
 
     def calc_fitness(self, individual, tmp_car):
@@ -400,8 +400,8 @@ class GeneticAlgorithm:
         return chosen[0], chosen[1]
 
 
-def wb_func(epoch):
-    return 1/max(1, epoch)
+def wb_func(divider):
+    return 1/max(1, divider)
 
 
 def layer_func(epoch_time):
