@@ -62,8 +62,10 @@ class Car:
         self.distance = 0
         self.alive = True
         self.time = 0
+        self.tmp = []
+        self.middle = []
 
-    def draw_line(self, screen, angle, game_map):
+    def draw_line(self, screen, angle, game_map, color=(0,255,0), add=False):
         length = 1
         x = self.center[0] + math.cos((math.radians(self.angle + angle))) * length
         y = self.center[1] - math.sin((math.radians(self.angle + angle))) * length
@@ -73,19 +75,21 @@ class Car:
             x = self.center[0] + math.cos((math.radians(self.angle + angle))) * length
             y = self.center[1] - math.sin((math.radians(self.angle + angle))) * length
         if DRAW_RADARS:
-            pygame.draw.line(screen, (0, 255, 0), self.center, (x, y), 1)
-            pygame.draw.circle(screen, (0, 255, 0), (x, y), 5)
+            pygame.draw.line(screen, color, self.center, (x, y), 1)
+            pygame.draw.circle(screen, color, (x, y), 5)
         self.radars.append(length / 200)
+        if add:
+            self.tmp.append(length)
 
     def draw(self, screen, game_map):
         rotated_image = pygame.transform.rotate(self.sprite, self.angle)
         new_rect = rotated_image.get_rect(center=self.sprite.get_rect(topleft=(self.x, self.y)).center)
         screen.blit(rotated_image, new_rect.topleft)
-        self.draw_line(screen, 90, game_map)
+        self.draw_line(screen, 90, game_map, color=(255, 0, 0), add=True) #left
         self.draw_line(screen, 45, game_map)
         self.draw_line(screen, 0, game_map)
         self.draw_line(screen, -45, game_map)
-        self.draw_line(screen, -90, game_map)
+        self.draw_line(screen, -90, game_map, color=(255, 0, 0), add=True) #right
 
     def rotate(self, left=False, right=False):
         if left:
@@ -122,6 +126,9 @@ class Car:
         self.radars = []
 
         self.time += 1
+
+        self.middle.append(min(self.tmp) / max(self.tmp))
+        self.tmp = []
 
 
 class Layer_Dense:
@@ -181,6 +188,7 @@ class NeuralNetwork:
         self.activation_function = activation_function
         self.softmax = softmax
         self.fitness = 0
+        self.middle = 0
         for i in range(len(number_per_layer) - 1):
             self.layers.append(Layer_Dense(number_per_layer[i], number_per_layer[i + 1]))
 
@@ -244,6 +252,7 @@ class GeneticAlgorithm:
         #
         #
         #print(new_population[0])
+        print(new_population[0].middle)
         #
         #
         #
@@ -298,6 +307,7 @@ class GeneticAlgorithm:
 
     def calc_fitness(self, individual, tmp_car):
         individual.fitness = self.goal_func(tmp_car)
+        individual.middle = sum(tmp_car.middle)/len(tmp_car.middle)
 
     def mutation_wb(self, indv, mutation_prob):
         for i in range(len(indv.layers)):
@@ -404,8 +414,7 @@ def layer_func(epoch_time):
 
 
 def fitness_func(tmp_car):
-    return tmp_car.distance*(np.sqrt(tmp_car.time/max_time))
-
+    return tmp_car.distance*(np.sqrt(tmp_car.time/max_time)) * (sum(tmp_car.middle)/len(tmp_car.middle))
 
 SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Car Bot")

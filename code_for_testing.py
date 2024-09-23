@@ -20,6 +20,28 @@ def blit_rotate_center(win, image, top_left, angle):
     win.blit(rotated_image, new_rect.topleft)
 
 
+def draw_neural_net(ax, left, right, bottom, top, layer_sizes):
+    n_layers = len(layer_sizes)
+    v_spacing = (top - bottom) / float(max(layer_sizes))
+    h_spacing = (right - left) / float(len(layer_sizes) - 1)
+    # Nodes
+    for n, layer_size in enumerate(layer_sizes):
+        layer_top = v_spacing * (layer_size - 1) / 2. + (top + bottom) / 2.
+        for m in range(layer_size):
+            circle = plt.Circle((n * h_spacing + left, layer_top - m * v_spacing), v_spacing / 4.,
+                                color='w', ec='k', zorder=4)
+            ax.add_artist(circle)
+    # Edges
+    for n, (layer_size_a, layer_size_b) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
+        layer_top_a = v_spacing * (layer_size_a - 1) / 2. + (top + bottom) / 2.
+        layer_top_b = v_spacing * (layer_size_b - 1) / 2. + (top + bottom) / 2.
+        for m in range(layer_size_a):
+            for o in range(layer_size_b):
+                line = plt.Line2D([n * h_spacing + left, (n + 1) * h_spacing + left],
+                                  [layer_top_a - m * v_spacing, layer_top_b - o * v_spacing], c='k')
+                ax.add_artist(line)
+
+
 TRACK = scale_image(pygame.image.load("imgs/track.jpg"), 1.1)
 TRACK_BORDER = scale_image(pygame.image.load("imgs/track_white.png"), 1.1)
 TRACK_BORDER_MASK = pygame.mask.from_surface(TRACK_BORDER)
@@ -437,13 +459,21 @@ gen_alg = GeneticAlgorithm(population_size,
 cars = [Car() for _ in range(population_size)]
 run_counter = 0
 print("Nova populacija: {0}".format(run_counter))
-print("Generacija {0} epoha {1}".format(run_counter, gen_alg.epoch))
+
+npls = []
+
 while True:
-    if gen_alg.epoch == 50:
+    if gen_alg.epoch == 20:
         list_bf.append(best_fitnesses)
         list_af.append(avg_fitnesses)
         list_mpwb.append(mutation_prob_wb)
         list_mpl.append(mutation_prob_layer)
+
+        tmp_indiv = gen_alg.population[0]
+        npl = [layer.num_neurons for layer in tmp_indiv.layers]
+        npl.insert(0, 5)
+        npls.append(npl)
+
         best_fitnesses = []
         avg_fitnesses = []
         mutation_prob_layer = []
@@ -465,12 +495,28 @@ while True:
             plt.figure()
             plt.xlabel('Epoch')
             plt.ylabel('Fitness')
+
+            npl_count = {}
+            for npl in npls:
+                ind = "{0}".format(npl)
+                if ind in npl_count:
+                    npl_count[ind] += 1
+                else:
+                    npl_count[ind] = 1
+            npl_count = dict(sorted(npl_count.items()))
+
             for run in range(run_counter):
                 tmp_label = "Besst Fitness {0}".format(run)
                 plt.plot([i for i in range(len(list_bf[run]))], list_bf[run], label=tmp_label)
                 #plt.plot([i for i in range(len(list_af[run]))], list_af[run], label='Average Fitness')
             plt.legend()
+            plt.figure()
+            plt.yticks([num for num in range(run_counter+1)], ["{0}".format(num) for num in range(run_counter+1)])
+            plt.xlabel("Structure")
+            plt.ylabel("Count")
+            plt.bar(list(npl_count.keys()), list(npl_count.values()))
             plt.show()
+
             sys.exit(0)
 
     tick += 1
