@@ -8,14 +8,17 @@ import matplotlib.pyplot as plt
 
 pygame.init()
 
+
 def scale_image(img, factor):
     size = round(img.get_width() * factor), round(img.get_height() * factor)
     return pygame.transform.scale(img, size)
+
 
 def blit_rotate_center(win, image, top_left, angle):
     rotated_image = pygame.transform.rotate(image, angle)
     new_rect = rotated_image.get_rect(center=image.get_rect(topleft=top_left).center)
     win.blit(rotated_image, new_rect.topleft)
+
 
 TRACK = scale_image(pygame.image.load("imgs/track.jpg"), 1.1)
 TRACK_BORDER = scale_image(pygame.image.load("imgs/track_white.png"), 1.1)
@@ -37,11 +40,11 @@ mutation_prob_layer = []
 
 FPS = 60
 
-max_time = FPS*10
+max_time = FPS * 10
 tick = 0
 time = 0
 
-DRAW_RADARS = True
+DRAW_RADARS = False
 
 class Car:
     def __init__(self):
@@ -51,10 +54,10 @@ class Car:
         self.speed = 0
         self.rotation_vel = 8
         self.acceleration = 0.2
-        self.angle = 0
-        self.x, self.y = 350, 78
+        self.angle = -90
+        self.x, self.y = 320, 228
         self.width, self.height = CAR_W, CAR_H
-        self.center = [self.x + self.width/2, self.y + self.height/2]
+        self.center = [self.x + self.width / 2, self.y + self.height / 2]
         self.radars = []
         self.distance = 0
         self.alive = True
@@ -72,7 +75,7 @@ class Car:
         if DRAW_RADARS:
             pygame.draw.line(screen, (0, 255, 0), self.center, (x, y), 1)
             pygame.draw.circle(screen, (0, 255, 0), (x, y), 5)
-        self.radars.append(length/200)
+        self.radars.append(length / 200)
 
     def draw(self, screen, game_map):
         rotated_image = pygame.transform.rotate(self.sprite, self.angle)
@@ -109,13 +112,13 @@ class Car:
         horizontal = math.cos(radians) * self.speed
         vertical = math.sin(radians) * self.speed
 
-        self.distance += np.sqrt(horizontal**2 + vertical**2)
+        self.distance += np.sqrt(horizontal ** 2 + vertical ** 2)
 
         if self.alive:
             self.y -= vertical
             self.x += horizontal
 
-        self.center = [self.x + self.width/2, self.y + self.height/2]
+        self.center = [self.x + self.width / 2, self.y + self.height / 2]
         self.radars = []
 
         self.time += 1
@@ -148,7 +151,7 @@ class Layer_Dense:
             self.weights = np.delete(self.weights, 0, axis=1)
             self.biases = np.delete(self.biases, 0, axis=1)
             self.num_neurons -= 1
-        
+
     def remove_weights(self):
         check_shape = (1, self.num_neurons)
         if self.weights.shape != check_shape:
@@ -158,15 +161,18 @@ class Layer_Dense:
     def __str__(self):
         return "Weights:\n" + str(self.weights) + "\nBiases:" + str(self.biases)
 
+
 class Activation_ReLU:
     def forward(self, inputs):
         self.output = np.maximum(0, inputs)
+
 
 class Activation_Softmax:
     def forward(self, inputs):
         exp_values = np.exp(inputs - np.max(inputs, axis=1, keepdims=True))
         probs = exp_values / np.sum(exp_values, axis=1, keepdims=True)
         self.output = probs
+
 
 class NeuralNetwork:
     def __init__(self, number_per_layer, activation_function, softmax):
@@ -175,8 +181,8 @@ class NeuralNetwork:
         self.activation_function = activation_function
         self.softmax = softmax
         self.fitness = 0
-        for i in range(len(number_per_layer)-1):
-            self.layers.append(Layer_Dense(number_per_layer[i], number_per_layer[i+1]))
+        for i in range(len(number_per_layer) - 1):
+            self.layers.append(Layer_Dense(number_per_layer[i], number_per_layer[i + 1]))
 
     def forward(self, inputs):
         current_inputs = inputs
@@ -192,59 +198,106 @@ class NeuralNetwork:
             self.output = probs
         else:
             self.output = current_outputs
-    
+
     def __str__(self):
         out = ""
         for i, lay in enumerate(self.layers):
             out += "Layer " + str(i) + ": \n" + str(lay) + "\n"
         return "-----Neural Network-----\nFitness: " + str(self.fitness) + "\n" + out
 
-class GeneticAlgorithm():
-    def __init__(self, population_size, elitism, elitism_size):
+
+class GeneticAlgorithm:
+    def __init__(self, population_size,
+                 elitism_size,
+                 elitism,
+                 selection_size,
+                 mutation_prob_wb_func,
+                 mutation_prob_layer_func,
+                 nn_structure,
+                 activation_func,
+                 goal_func):
+
         self.population_size = population_size
         self.elitism = elitism
         self.elitism_size = elitism_size + elitism_size % 2
+        self.selection_size = selection_size
+        self.mutation_prob_wb_func = mutation_prob_wb_func
+        self.mutation_prob_layer_func = mutation_prob_layer_func
+        self.nn_structure = nn_structure
+        self.activation_func = activation_func
+        self.goal_func = goal_func
         self.alive_individuals = population_size
-        self.make_population(population_size)
-        self.epoch = 1
+        self.population = [NeuralNetwork(self.nn_structure, self.activation_func, True) for _ in range(population_size)]
+        self.epoch = 0
         self.epoch_time = 0
-
-    def make_population(self, population_size):
-        self.population = [NeuralNetwork([5, 5, 5, 5], Activation_ReLU(), True) for _ in range(population_size)]
+        self.local_max_counter = 0
+        self.devider = 1
+        self.max_fitness = 0
 
     def new_generation(self):
         self.population.sort(key=lambda x: x.fitness, reverse=True)
         new_population = copy.deepcopy(self.population)
-        self.alive_individuals = self.population_size   
-        #print("----------Generation----------")
-        #for indv in new_population:
-        #    print(indv)
+        self.alive_individuals = self.population_size
+        #
+        #
+        #
+        #
+        #
+        #print(new_population[0])
+        #
+        #
+        #
+        #
+        #
+        #
+        if self.max_fitness == new_population[0].fitness and self.max_fitness < 4000:
+            self.local_max_counter += 1
+        elif new_population[0].fitness > self.max_fitness:
+            self.max_fitness = new_population[0].fitness
+            self.local_max_counter = 0
+
+        if self.local_max_counter >= 10:
+            self.devider = 1
+
         best_fitnesses.append(new_population[0].fitness)
         tmp = 0
         for indv in new_population:
             tmp += indv.fitness
         tmp = tmp / len(new_population)
         avg_fitnesses.append(tmp)
-        print(new_population[0])
-        #for i in range(len(new_population)):
-        #    print(new_population[i].fitness)
-        for i in range(self.elitism_size, self.population_size, 2):
-            parent1, parent2 = self.selection(self.population, 20)
-            new_population[i], new_population[i+1] = self.crossover_layers_new(parent1, parent2)
-            new_population[i].fitness = 0
-            new_population[i+1].fitness = 0
-            self.mutation_layer(new_population[i], 1 / (self.epoch_time/FPS))
-            self.mutation_layer(new_population[i+1], 1 / (self.epoch_time/FPS))
-            self.mutation_wb(new_population[i], 1 / self.epoch)
-            self.mutation_wb(new_population[i+1], 1 / self.epoch)
-        mutation_prob_wb.append(1/self.epoch)
-        mutation_prob_layer.append(1/(self.epoch_time/FPS))
-        self.population = copy.deepcopy(new_population)
+
+        if self.elitism:
+            for i in range(self.elitism_size, self.population_size, 2):
+                parent1, parent2 = self.selection(self.population, self.selection_size)
+                new_population[i], new_population[i + 1] = self.crossover_layers(parent1, parent2)
+                new_population[i].fitness = 0
+                new_population[i + 1].fitness = 0
+                self.mutation_layer(new_population[i], self.mutation_prob_layer_func(self.epoch_time))
+                self.mutation_layer(new_population[i + 1], self.mutation_prob_layer_func(self.epoch_time))
+                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.devider))
+                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.devider))
+            mutation_prob_wb.append(self.mutation_prob_wb_func(self.epoch))
+            mutation_prob_layer.append(self.mutation_prob_layer_func(self.epoch_time))
+            self.population = copy.deepcopy(new_population)
+        else:
+            for i in range(0, self.population_size, 2):
+                parent1, parent2 = self.selection(self.population, 20)
+                new_population[i], new_population[i + 1] = self.crossover_layers(parent1, parent2)
+                new_population[i].fitness = 0
+                new_population[i + 1].fitness = 0
+                self.mutation_layer(new_population[i], self.mutation_prob_layer_func(self.epoch_time))
+                self.mutation_layer(new_population[i + 1], self.mutation_prob_layer_func(self.epoch_time))
+                self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.devider))
+                self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.devider))
+            mutation_prob_wb.append(self.mutation_prob_wb_func(self.epoch))
+            mutation_prob_layer.append(self.mutation_prob_layer_func(self.epoch_time))
+            self.population = copy.deepcopy(new_population)
         self.epoch += 1
+        self.devider += 1
         self.epoch_time = 0
 
     def calc_fitness(self, individual, tmp_car):
-        individual.fitness = tmp_car.distance
+        individual.fitness = self.goal_func(tmp_car)
 
     def mutation_wb(self, indv, mutation_prob):
         for i in range(len(indv.layers)):
@@ -256,59 +309,26 @@ class GeneticAlgorithm():
                                 indv.layers[i].weights[j][k] += (random.random() - 0.5) * 0.1
                             else:
                                 indv.layers[i].weights[j][k] -= (random.random() - 0.5) * 0.1
-                    
+
             else:
                 for j in range(len(indv.layers[i].biases[0])):
-                    if random.random() < mutation_prob*0.5:
+                    if random.random() < mutation_prob * 0.5:
                         if random.random() < 0.5:
                             indv.layers[i].biases[0][j] += (random.random() - 0.5) * 0.1
                         else:
                             indv.layers[i].biases[0][j] -= (random.random() - 0.5) * 0.1
-    
-    def mutation_layer(self, indv, mutatuion_prob):
-        if random.random() < mutatuion_prob:
-            chosen = random.randrange(len(indv.layers)-1)
+
+    def mutation_layer(self, indv, mutation_prob):
+        if random.random() < mutation_prob:
+            chosen = random.randrange(len(indv.layers) - 1)
             if random.random() < 0.5:
                 indv.layers[chosen].remove_neuron()
-                indv.layers[chosen+1].remove_weights()
+                indv.layers[chosen + 1].remove_weights()
             else:
                 indv.layers[chosen].add_neuron()
-                indv.layers[chosen+1].add_weights()
+                indv.layers[chosen + 1].add_weights()
 
     def crossover_layers(self, par1, par2):
-        #nadjemo broj slojeva
-        chosen1 = random.randrange(0, len(par1.layers)-1)
-        chosen2 = random.randrange(0, len(par2.layers)-1)
-        #izaberemo jedan sloj
-        #zamenimo slojeve jednog roditelja sa slojem drugog roditelja
-        #dobijemo 2 nova deteta
-        if 1:
-            num = abs(par1.layers[chosen1].num_neurons - par2.layers[chosen2].num_neurons)
-            if par1.layers[chosen1].num_neurons > par2.layers[chosen2].num_neurons:
-                tmp_layer1 = copy.deepcopy(par1.layers[chosen1])
-                tmp_layer2 = copy.deepcopy(par2.layers[chosen2])
-                for i in range(num):
-                    tmp_layer1.remove_neuron()
-                    tmp_layer2.add_neuron()
-                new_cld1 = copy.deepcopy(par2)
-                new_cld1.layers[chosen1] = tmp_layer1
-                new_cld2 = copy.deepcopy(par1)
-                new_cld2.layers[chosen1] = tmp_layer2
-            else:
-                tmp_layer1 = copy.deepcopy(par1.layers[chosen1])
-                tmp_layer2 = copy.deepcopy(par2.layers[chosen2])
-                for i in range(num):
-                    tmp_layer1.add_neuron()
-                    tmp_layer2.remove_neuron()
-                new_cld1 = copy.deepcopy(par2)
-                new_cld1.layers[chosen1] = tmp_layer1
-                new_cld2 = copy.deepcopy(par1)
-                new_cld2.layers[chosen1] = tmp_layer2
-            return new_cld1, new_cld2
-        else:
-            return par1, par2
-
-    def crossover_layers_new(self, par1, par2):
         chosen = random.randrange(0, len(par1.layers) - 1)
         delta_inputs = abs(par1.layers[chosen].num_inputs - par2.layers[chosen].num_inputs)
         if delta_inputs == 0:
@@ -333,7 +353,7 @@ class GeneticAlgorithm():
 
             if tmp_layer1.num_inputs > tmp_layer2.num_inputs:
                 for i in range(delta_inputs):
-                    tmp_layer1.weights = np.delete(tmp_layer1.weights, tmp_layer1.num_inputs-1, 0)
+                    tmp_layer1.weights = np.delete(tmp_layer1.weights, tmp_layer1.num_inputs - 1, 0)
                     tmp_layer1.num_inputs -= 1
                     tmp_layer2.weights = np.vstack([tmp_layer2.weights, np.zeros((1, tmp_layer2.num_neurons))])
                     tmp_layer2.num_inputs += 1
@@ -352,7 +372,7 @@ class GeneticAlgorithm():
 
             else:
                 for i in range(delta_inputs):
-                    tmp_layer2.weights = np.delete(tmp_layer2.weights, tmp_layer2.num_inputs-1, 0)
+                    tmp_layer2.weights = np.delete(tmp_layer2.weights, tmp_layer2.num_inputs - 1, 0)
                     tmp_layer2.num_inputs -= 1
                     tmp_layer1.weights = np.vstack([tmp_layer1.weights, np.zeros((1, tmp_layer1.num_neurons))])
                     tmp_layer1.num_inputs += 1
@@ -370,16 +390,21 @@ class GeneticAlgorithm():
                 return new_cld1, new_cld2
 
     def selection(self, population, indv_num):
-        """#population.sort(key=lambda x: x.fitness)
-        sum_fitness = sum([population[i].fitness for i in range(population_size)])
-        while 1:
-            indv = random.choice(population)
-            chance = indv.fitness ** 2 / sum_fitness
-            if random.random() < chance:
-                return ind"""
         chosen = random.sample(population, indv_num)
         chosen.sort(key=lambda x: x.fitness, reverse=True)
         return chosen[0], chosen[1]
+
+
+def wb_func(epoch):
+    return 1/max(1, epoch)
+
+
+def layer_func(epoch_time):
+    return (max_time-epoch_time)/max_time
+
+
+def fitness_func(tmp_car):
+    return tmp_car.distance*(np.sqrt(tmp_car.time/max_time))
 
 
 SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -389,9 +414,21 @@ clock = pygame.time.Clock()
 
 base_font = pygame.font.Font(None, 32)
 
-population_size = 40
+population_size = 20
+elitism_size = max(2, int(population_size/10))
+selection_size = max(2, int(population_size/20))
+nn_structure = [5, 1, 1, 5]
 
-gen_alg = GeneticAlgorithm(population_size, True, 4)
+gen_alg = GeneticAlgorithm(population_size,
+                           elitism_size,
+                           True,
+                           selection_size,
+                           wb_func,
+                           layer_func,
+                           nn_structure,
+                           Activation_ReLU(),
+                           fitness_func)
+
 cars = [Car() for _ in range(population_size)]
 
 while True:
@@ -406,9 +443,9 @@ while True:
             if event.key == pygame.K_r:
                 DRAW_RADARS = not DRAW_RADARS
             if event.key == pygame.K_LEFT:
-                FPS = max(30, int(FPS/2))
+                FPS = max(30, int(FPS / 2))
             if event.key == pygame.K_RIGHT:
-                FPS = min(240, int(FPS*2))
+                FPS = min(240, int(FPS * 2))
         if event.type == pygame.QUIT:
             pygame.quit()
             plt.figure()
@@ -425,20 +462,18 @@ while True:
             sys.exit(0)
 
     SCREEN.blit(TRACK, (0, 0))
-    #SCREEN.blit(TRACK_BORDER, (0, 0))
+    # SCREEN.blit(TRACK_BORDER, (0, 0))
     inputs = []
     car_cmds = []
     for i, car in enumerate(cars):
         car.draw(SCREEN, TRACK)
         if car.alive:
             gen_alg.population[i].forward(car.radars)
-            #print(indv.output)
+            # print(indv.output)
             car_cmds.append(np.argmax(gen_alg.population[i].output))
         else:
             car_cmds.append(-1)
     cars[0].draw(SCREEN, TRACK)
-
-    #print(car_cmds)
 
     for i, car_cmd in enumerate(car_cmds):
         if car_cmd == -1:
@@ -451,7 +486,7 @@ while True:
         elif car_cmd == 2:
             cars[i].speed += cars[i].acceleration
         elif car_cmd == 3:
-            cars[i].speed -= cars[i].acceleration*2
+            cars[i].speed -= cars[i].acceleration * 2
         else:
             if cars[i].speed >= 1.0:
                 cars[i].rotate(right=True)
@@ -464,8 +499,6 @@ while True:
                 gen_alg.alive_individuals -= 1
             else:
                 cars[i].update()
-    #print(car_cmds)
-    #input()
 
     if gen_alg.alive_individuals == 0:
         gen_alg.new_generation()
@@ -475,10 +508,4 @@ while True:
 
     text = str(FPS)
     text_surface = base_font.render(text, True, (0, 0, 0))
-    SCREEN.blit(text_surface, (5, HEIGHT-25))
-    #razlicite mape
-    #reprezentacija nm
-    #pusti ga sam da radi neko vreme ako zapne pomozi
-    #10 puta da se pusti da radi pa prosek dobijenih rezultata
-    #duzina staze zbog fitnesa
-    #pomeriti mesto pocetka automobila (da ne bude 2 desna skretanja na pocetku)
+    SCREEN.blit(text_surface, (5, HEIGHT - 25))
