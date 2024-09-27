@@ -252,7 +252,7 @@ class GeneticAlgorithm:
         #
         #
         print(new_population[0])
-        print(new_population[0].middle)
+        #print(new_population[0].middle)
         #
         #
         #
@@ -421,8 +421,6 @@ pygame.display.set_caption("Car Bot")
 
 clock = pygame.time.Clock()
 
-base_font = pygame.font.Font(None, 32)
-
 population_size = 40
 elitism_size = max(2, int(population_size/10))
 selection_size = max(2, int(population_size/20))
@@ -451,10 +449,6 @@ while True:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_r:
                 DRAW_RADARS = not DRAW_RADARS
-            if event.key == pygame.K_LEFT:
-                FPS = max(30, int(FPS / 2))
-            if event.key == pygame.K_RIGHT:
-                FPS = min(240, int(FPS * 2))
         if event.type == pygame.QUIT:
             pygame.quit()
             plt.figure()
@@ -514,7 +508,3 @@ while True:
         for i in range(len(cars)):
             cars[i] = Car()
         cars[0].sprite = GREEN_CAR
-
-    text = str(FPS)
-    text_surface = base_font.render(text, True, (0, 0, 0))
-    SCREEN.blit(text_surface, (5, HEIGHT - 25))

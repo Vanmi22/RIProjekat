@@ -20,6 +20,54 @@ def blit_rotate_center(win, image, top_left, angle):
     win.blit(rotated_image, new_rect.topleft)
 
 
+def draw_neural_net(layer_sizes, ax=None, left=.1, right=.9, bottom=.1, top=.9, color='w', layer_text=None):
+    n_layers = len(layer_sizes)
+    v_spacing = (top - bottom) / float(max(layer_sizes))
+    h_spacing = (right - left) / float(len(layer_sizes) - 1)
+    c = color
+    if ax is None:
+        ax = plt.gca()
+
+    # Nodes
+    for n, layer_size in enumerate(layer_sizes):
+        layer_top = v_spacing * (layer_size - 1) / 2. + (top + bottom) / 2.
+        for m in range(layer_size):
+            if len(color) > 1:
+                c = color[n]
+            circle = plt.Circle((n * h_spacing + left, layer_top - m * v_spacing), v_spacing / 4.,
+                                color=c, ec='k', zorder=4)
+            ax.add_artist(circle)
+            # Node annotations
+            if layer_text:
+                text = layer_text.pop(0)
+                plt.annotate(text, xy=(n * h_spacing + left, layer_top - m * v_spacing), zorder=5, ha='center',
+                             va='center')
+    # Edges
+    for n, (layer_size_a, layer_size_b) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
+        layer_top_a = v_spacing * (layer_size_a - 1) / 2. + (top + bottom) / 2.
+        layer_top_b = v_spacing * (layer_size_b - 1) / 2. + (top + bottom) / 2.
+        for m in range(layer_size_a):
+            for o in range(layer_size_b):
+                line = plt.Line2D([n * h_spacing + left, (n + 1) * h_spacing + left],
+                                  [layer_top_a - m * v_spacing, layer_top_b - o * v_spacing], c='k')
+
+                ax.add_artist(line)
+
+    # Beautify the axes
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+
+    # Edges
+    for n, (layer_size_a, layer_size_b) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
+        layer_top_a = v_spacing * (layer_size_a - 1) / 2. + (top + bottom) / 2.
+        layer_top_b = v_spacing * (layer_size_b - 1) / 2. + (top + bottom) / 2.
+        for m in range(layer_size_a):
+            for o in range(layer_size_b):
+                line = plt.Line2D([n * h_spacing + left, (n + 1) * h_spacing + left],
+                                  [layer_top_a - m * v_spacing, layer_top_b - o * v_spacing], c='k')
+                ax.add_artist(line)
+
+
 TRACK = scale_image(pygame.image.load("imgs/track.jpg"), 1.1)
 TRACK_BORDER = scale_image(pygame.image.load("imgs/track_white.png"), 1.1)
 TRACK_BORDER_MASK = pygame.mask.from_surface(TRACK_BORDER)
@@ -37,6 +85,11 @@ best_fitnesses = []
 avg_fitnesses = []
 mutation_prob_wb = []
 mutation_prob_layer = []
+
+list_bf = []
+list_af = []
+list_mpwb = []
+list_mpl = []
 
 FPS = 60
 
@@ -62,10 +115,8 @@ class Car:
         self.distance = 0
         self.alive = True
         self.time = 0
-        self.tmp = []
-        self.middle = []
 
-    def draw_line(self, screen, angle, game_map, color=(0,255,0), add=False):
+    def draw_line(self, screen, angle, game_map):
         length = 1
         x = self.center[0] + math.cos((math.radians(self.angle + angle))) * length
         y = self.center[1] - math.sin((math.radians(self.angle + angle))) * length
@@ -75,21 +126,19 @@ class Car:
             x = self.center[0] + math.cos((math.radians(self.angle + angle))) * length
             y = self.center[1] - math.sin((math.radians(self.angle + angle))) * length
         if DRAW_RADARS:
-            pygame.draw.line(screen, color, self.center, (x, y), 1)
-            pygame.draw.circle(screen, color, (x, y), 5)
+            pygame.draw.line(screen, (0, 255, 0), self.center, (x, y), 1)
+            pygame.draw.circle(screen, (0, 255, 0), (x, y), 5)
         self.radars.append(length / 200)
-        if add:
-            self.tmp.append(length)
 
     def draw(self, screen, game_map):
         rotated_image = pygame.transform.rotate(self.sprite, self.angle)
         new_rect = rotated_image.get_rect(center=self.sprite.get_rect(topleft=(self.x, self.y)).center)
         screen.blit(rotated_image, new_rect.topleft)
-        self.draw_line(screen, 90, game_map, color=(255, 0, 0), add=True) #left
+        self.draw_line(screen, 90, game_map)
         self.draw_line(screen, 45, game_map)
         self.draw_line(screen, 0, game_map)
         self.draw_line(screen, -45, game_map)
-        self.draw_line(screen, -90, game_map, color=(255, 0, 0), add=True) #right
+        self.draw_line(screen, -90, game_map)
 
     def rotate(self, left=False, right=False):
         if left:
@@ -126,9 +175,6 @@ class Car:
         self.radars = []
 
         self.time += 1
-
-        self.middle.append(min(self.tmp) / max(self.tmp))
-        self.tmp = []
 
 
 class Layer_Dense:
@@ -188,7 +234,6 @@ class NeuralNetwork:
         self.activation_function = activation_function
         self.softmax = softmax
         self.fitness = 0
-        self.middle = 0
         for i in range(len(number_per_layer) - 1):
             self.layers.append(Layer_Dense(number_per_layer[i], number_per_layer[i + 1]))
 
@@ -252,7 +297,6 @@ class GeneticAlgorithm:
         #
         #
         print(new_population[0])
-        print(new_population[0].middle)
         #
         #
         #
@@ -285,7 +329,7 @@ class GeneticAlgorithm:
                 self.mutation_layer(new_population[i + 1], self.mutation_prob_layer_func(self.epoch_time))
                 self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.divider))
                 self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.divider))
-            mutation_prob_wb.append(self.mutation_prob_wb_func(self.divider))
+            mutation_prob_wb.append(self.mutation_prob_wb_func(self.epoch))
             mutation_prob_layer.append(self.mutation_prob_layer_func(self.epoch_time))
             self.population = copy.deepcopy(new_population)
         else:
@@ -298,7 +342,7 @@ class GeneticAlgorithm:
                 self.mutation_layer(new_population[i + 1], self.mutation_prob_layer_func(self.epoch_time))
                 self.mutation_wb(new_population[i], self.mutation_prob_wb_func(self.divider))
                 self.mutation_wb(new_population[i + 1], self.mutation_prob_wb_func(self.divider))
-            mutation_prob_wb.append(self.mutation_prob_wb_func(self.divider))
+            mutation_prob_wb.append(self.mutation_prob_wb_func(self.epoch))
             mutation_prob_layer.append(self.mutation_prob_layer_func(self.epoch_time))
             self.population = copy.deepcopy(new_population)
         self.epoch += 1
@@ -307,7 +351,6 @@ class GeneticAlgorithm:
 
     def calc_fitness(self, individual, tmp_car):
         individual.fitness = self.goal_func(tmp_car)
-        individual.middle = sum(tmp_car.middle)/len(tmp_car.middle)
 
     def mutation_wb(self, indv, mutation_prob):
         for i in range(len(indv.layers)):
@@ -414,7 +457,8 @@ def layer_func(epoch_time):
 
 
 def fitness_func(tmp_car):
-    return tmp_car.distance*(np.sqrt(tmp_car.time/max_time)) * (sum(tmp_car.middle)/len(tmp_car.middle))
+    return tmp_car.distance*(np.sqrt(tmp_car.time/max_time))
+
 
 SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Car Bot")
@@ -423,7 +467,7 @@ clock = pygame.time.Clock()
 
 base_font = pygame.font.Font(None, 32)
 
-population_size = 40
+population_size = 20
 elitism_size = max(2, int(population_size/10))
 selection_size = max(2, int(population_size/20))
 nn_structure = [5, 1, 1, 5]
@@ -457,16 +501,14 @@ while True:
                 FPS = min(240, int(FPS * 2))
         if event.type == pygame.QUIT:
             pygame.quit()
-            plt.figure()
-            plt.xlabel('Epoch')
-            plt.plot([i for i in range(len(best_fitnesses))], best_fitnesses, label='Best Fitness')
-            plt.plot([i for i in range(len(best_fitnesses))], avg_fitnesses, label='Average Fitness')
-            plt.legend()
-            plt.figure()
-            plt.xlabel('Epoch')
-            plt.plot([i for i in range(len(best_fitnesses))], mutation_prob_wb, label='Mutation Prob WB')
-            plt.plot([i for i in range(len(best_fitnesses))], mutation_prob_layer, label='Mutation Prob Layer')
-            plt.legend()
+            tmp_indiv = gen_alg.population[0]
+            npl = [layer.num_neurons for layer in tmp_indiv.layers]
+            npl.insert(0, 5)
+            green = [0, 0.878, 0.49]
+            pink = [1, 0.549, 0.58]
+            layer_color = [green, 'w', 'w', pink]
+            fig = plt.figure(figsize=(8, 8))
+            draw_neural_net(npl, None, .1, .9, .1, .9, color=layer_color)
             plt.show()
             sys.exit(0)
 
